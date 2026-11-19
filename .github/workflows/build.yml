@@ -48,10 +48,12 @@ jobs:
         with:
           distribution: temurin
           java-version: 17
-      - uses: android-actions/setup-android@v3
+      # Android SDK is preinstalled on ubuntu-latest ($ANDROID_HOME).
       - name: Android SDK / NDK
         run: |
-          sdkmanager "platforms;android-34" "build-tools;34.0.0" "ndk;${NDK_VERSION}"
+          SDKM="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKM" --licenses > /dev/null || true
+          "$SDKM" "platforms;android-34" "build-tools;34.0.0" "ndk;${NDK_VERSION}"
           echo "NDK_HOME=$ANDROID_HOME/ndk/${NDK_VERSION}" >> "$GITHUB_ENV"
       - uses: dtolnay/rust-toolchain@stable
         with:
