@@ -1,4 +1,4 @@
-﻿# Builds Nota.exe on Windows. Installs Node.js, Rust and the C++ build tools
+﻿# Builds Yarvi.exe on Windows. Installs Node.js, Rust and the C++ build tools
 # through winget when they are missing, then runs the Tauri release build.
 $ErrorActionPreference = "Stop"
 Set-Location -Path $PSScriptRoot
@@ -98,10 +98,10 @@ if ($LASTEXITCODE -ne 0) { throw "Сборка завершилась с оши�
 
 $out = Join-Path $PSScriptRoot "output"
 New-Item -ItemType Directory -Force -Path $out | Out-Null
-Copy-Item "src-tauri\target\release\nota.exe" (Join-Path $out "Nota.exe") -Force
+Copy-Item "src-tauri\target\release\yarvi.exe" (Join-Path $out "Yarvi.exe") -Force
 Get-ChildItem "src-tauri\target\release\bundle" -Recurse -Include *.msi, *-setup.exe | Copy-Item -Destination $out -Force
 
 Write-Host "`nГотово! Файлы в папке: $out" -ForegroundColor Green
-Write-Host "  Nota.exe          - запускается сразу, без установки"
+Write-Host "  Yarvi.exe          - запускается сразу, без установки"
 Write-Host "  *.msi / *-setup.exe - установщики"
 explorer $out

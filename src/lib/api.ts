@@ -9,6 +9,8 @@ export const api = {
   lyrics: (title: string, artist: string, duration: number) => invoke<Lyrics>("lyrics", { title, artist, duration }),
 
   spotifyImport: (link: string) => invoke<ImportedPlaylist>("spotify_import", { link }),
+  appleImport: (link: string) => invoke<ImportedPlaylist>("apple_import", { link }),
+  soundcloudImport: (link: string) => invoke<{ name: string; tracks: Track[] }>("soundcloud_import", { link }),
   vkMyAudio: () => invoke<Track[]>("vk_my_audio"),
   yandexLikes: () => invoke<Track[]>("yandex_likes"),
 

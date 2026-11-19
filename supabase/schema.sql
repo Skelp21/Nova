@@ -1,4 +1,4 @@
--- Nota: one row per user with the synced library (playlists, likes, history).
+-- Yarvi: one row per user with the synced library (playlists, likes, history).
 -- Run once in Supabase → SQL Editor.
 create table if not exists public.libraries (
   user_id    uuid primary key references auth.users (id) on delete cascade,

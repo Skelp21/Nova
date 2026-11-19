@@ -98,7 +98,7 @@ export function PlaylistsPage({ embedded }: { embedded?: boolean } = {}) {
           </button>
         ))}
       </div>
-      {!playlists.length && <div className="empty">Плейлистов пока нет. Создайте свой или перенесите из Spotify, ВК или Яндекс Музыки.</div>}
+      {!playlists.length && <div className="empty">Плейлистов пока нет. Создайте свой или перенесите из Spotify, Apple Music, SoundCloud, ВК или Яндекс Музыки.</div>}
     </div>
   );
 }

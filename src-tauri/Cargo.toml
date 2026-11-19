@@ -1,12 +1,12 @@
 [package]
-name = "nota"
+name = "yarvi"
 version = "0.1.0"
-description = "Nota — music aggregator player (VK, Yandex Music, YouTube Music, SoundCloud)"
+description = "Yarvi — music aggregator player (VK, Yandex Music, YouTube Music, SoundCloud)"
 authors = ["Skelp"]
 edition = "2021"
 
 [lib]
-name = "nota_lib"
+name = "yarvi_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

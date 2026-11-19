@@ -1,5 +1,5 @@
-﻿# Builds Nota.apk for Android phones on Windows.
-# Downloads a portable JDK and Android SDK/NDK into %LOCALAPPDATA%\NotaAndroid
+﻿# Builds Yarvi.apk for Android phones on Windows.
+# Downloads a portable JDK and Android SDK/NDK into %LOCALAPPDATA%\YarviAndroid
 # (no admin rights, no Android Studio needed), then runs the Tauri Android build.
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"   # makes Invoke-WebRequest much faster
@@ -11,7 +11,7 @@ function Download($url, $file) {
     Invoke-WebRequest -Uri $url -OutFile $file -UseBasicParsing
 }
 
-$root = Join-Path $env:LOCALAPPDATA "NotaAndroid"
+$root = Join-Path $env:LOCALAPPDATA "YarviAndroid"
 New-Item -ItemType Directory -Force -Path $root | Out-Null
 $env:Path = [Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [Environment]::GetEnvironmentVariable("Path", "User") + ";$env:USERPROFILE\.cargo\bin"
 
@@ -94,8 +94,8 @@ $apk = Get-ChildItem "src-tauri\gen\android\app\build\outputs\apk" -Recurse -Fil
     Sort-Object LastWriteTime -Descending | Select-Object -First 1
 $out = Join-Path $PSScriptRoot "output"
 New-Item -ItemType Directory -Force -Path $out | Out-Null
-Copy-Item $apk.FullName (Join-Path $out "Nota.apk") -Force
+Copy-Item $apk.FullName (Join-Path $out "Yarvi.apk") -Force
 
-Write-Host "`nГотово! $out\Nota.apk" -ForegroundColor Green
+Write-Host "`nГотово! $out\Yarvi.apk" -ForegroundColor Green
 Write-Host "Скиньте файл на телефон и откройте его. Android попросит разрешить установку из этого источника - разрешите."
 explorer $out

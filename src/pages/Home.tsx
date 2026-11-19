@@ -68,7 +68,7 @@ export function HomePage() {
         <div className="row">
           <h2 className="grow">Ваши плейлисты</h2>
           <button className="btn ghost small" onClick={() => openModal({ type: "import" })}>
-            <Import size={14} /> Перенести из Spotify / ВК / Яндекса
+            <Import size={14} /> Перенести музыку
           </button>
         </div>
         {playlists.length ? (

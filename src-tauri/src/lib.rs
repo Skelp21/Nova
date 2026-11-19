@@ -9,7 +9,7 @@ mod proxy;
 
 use http::err;
 use model::{ImportedPlaylist, Lyrics, StreamInfo, Track};
-use providers::{lyrics as lyrics_src, spotify, vk, yandex};
+use providers::{apple, lyrics as lyrics_src, soundcloud, spotify, vk, yandex};
 use serde_json::Value;
 use std::path::PathBuf;
 use std::sync::OnceLock;
@@ -50,6 +50,23 @@ async fn lyrics(title: String, artist: String, duration: u32) -> Result<Lyrics, 
 #[tauri::command]
 async fn spotify_import(link: String) -> Result<ImportedPlaylist, String> {
     spotify::import(&link).await
+}
+
+#[tauri::command]
+async fn apple_import(link: String) -> Result<ImportedPlaylist, String> {
+    apple::import(&link).await
+}
+
+#[derive(serde::Serialize)]
+struct SoundcloudImport {
+    name: String,
+    tracks: Vec<Track>,
+}
+
+#[tauri::command]
+async fn soundcloud_import(link: String) -> Result<SoundcloudImport, String> {
+    let (name, tracks) = soundcloud::import(&link).await?;
+    Ok(SoundcloudImport { name, tracks })
 }
 
 #[tauri::command]
@@ -214,7 +231,7 @@ fn default_download_dir(app: AppHandle) -> Result<String, String> {
         .or_else(|_| app.path().download_dir())
         .or_else(|_| app.path().app_data_dir())
         .map_err(err)?;
-    Ok(base.join("Nota").to_string_lossy().to_string())
+    Ok(base.join("Yarvi").to_string_lossy().to_string())
 }
 
 #[tauri::command]
@@ -272,7 +289,7 @@ async fn open_miniplayer(app: AppHandle) -> Result<(), String> {
         return Ok(());
     }
     WebviewWindowBuilder::new(&app, "miniplayer", WebviewUrl::App("miniplayer.html".into()))
-        .title("Nota — мини-плеер")
+        .title("Yarvi — мини-плеер")
         .inner_size(400.0, 116.0)
         .resizable(false)
         .decorations(false)
@@ -314,6 +331,8 @@ pub fn run() {
             radio,
             lyrics,
             spotify_import,
+            apple_import,
+            soundcloud_import,
             vk_my_audio,
             yandex_likes,
             accounts_status,
@@ -331,5 +350,5 @@ pub fn run() {
             open_miniplayer
         ])
         .run(tauri::generate_context!())
-        .expect("error while running Nota");
+        .expect("error while running Yarvi");
 }

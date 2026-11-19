@@ -139,3 +139,82 @@ pub async fn stream(track_id: &str) -> Result<RawStream, String> {
     }
     Err(last_err)
 }
+
+/// Fills tracks that the playlist endpoint returned only as ids.
+async fn full_tracks(items: &[Value]) -> Result<Vec<Track>, String> {
+    let mut out: Vec<Option<Track>> = items.iter().map(parse_track).collect();
+    let missing: Vec<u64> = items
+        .iter()
+        .zip(&out)
+        .filter(|(_, t)| t.is_none())
+        .filter_map(|(v, _)| v.get("id").and_then(|i| i.as_u64()))
+        .collect();
+    let mut fetched = std::collections::HashMap::new();
+    for chunk in missing.chunks(50) {
+        let ids = chunk.iter().map(|i| i.to_string()).collect::<Vec<_>>().join(",");
+        let res = get_json(&format!("/tracks?ids={ids}")).await?;
+        for t in res.as_array().cloned().unwrap_or_default() {
+            if let (Some(id), Some(track)) = (t.get("id").and_then(|i| i.as_u64()), parse_track(&t)) {
+                fetched.insert(id, track);
+            }
+        }
+    }
+    for (slot, v) in out.iter_mut().zip(items) {
+        if slot.is_none() {
+            if let Some(id) = v.get("id").and_then(|i| i.as_u64()) {
+                *slot = fetched.remove(&id);
+            }
+        }
+    }
+    Ok(out.into_iter().flatten().collect())
+}
+
+/// Imports a SoundCloud link: playlist/album/set, a user's likes
+/// (soundcloud.com/<user> or …/likes) or a single track.
+pub async fn import(link: &str) -> Result<(String, Vec<Track>), String> {
+    let url = link.trim().split('?').next().unwrap_or("").trim_end_matches('/').to_string();
+    if !url.contains("soundcloud.com/") {
+        return Err("Нужна ссылка на soundcloud.com".into());
+    }
+    let likes = url.ends_with("/likes");
+    let resolve_url = if likes { url.trim_end_matches("/likes").to_string() } else { url.clone() };
+    let obj = get_json(&format!("/resolve?url={}", urlencoding::encode(&resolve_url)))
+        .await
+        .map_err(|_| "SoundCloud: ссылка не найдена или закрыта".to_string())?;
+    match obj.get("kind").and_then(|k| k.as_str()).unwrap_or("") {
+        "playlist" | "system-playlist" => {
+            let name = obj.get("title").and_then(|t| t.as_str()).unwrap_or("SoundCloud").to_string();
+            let items = obj.get("tracks").and_then(|t| t.as_array()).cloned().unwrap_or_default();
+            Ok((name, full_tracks(&items).await?))
+        }
+        "track" => {
+            let t = parse_track(&obj).ok_or("SoundCloud: не удалось прочитать трек")?;
+            Ok((t.title.clone(), vec![t]))
+        }
+        "user" => {
+            let id = obj.get("id").and_then(|i| i.as_u64()).ok_or("SoundCloud: нет id пользователя")?;
+            let name = obj.get("username").and_then(|n| n.as_str()).unwrap_or("SoundCloud");
+            let mut tracks = Vec::new();
+            let mut next = Some(format!("/users/{id}/track_likes?limit=200"));
+            while let Some(path) = next.take() {
+                let page = get_json(&path).await?;
+                for item in page.get("collection").and_then(|c| c.as_array()).cloned().unwrap_or_default() {
+                    if let Some(t) = item.get("track").and_then(parse_track) {
+                        tracks.push(t);
+                    }
+                }
+                next = page
+                    .get("next_href")
+                    .and_then(|n| n.as_str())
+                    .map(|n| n.strip_prefix(API).unwrap_or(n).to_string())
+                    // next_href already carries query params; drop a stale client_id
+                    .map(|n| regex::Regex::new(r"[&?]client_id=[^&]*").unwrap().replace(&n, "").to_string());
+                if tracks.len() >= 5000 {
+                    break;
+                }
+            }
+            Ok((format!("Лайки {name} (SoundCloud)"), tracks))
+        }
+        other => Err(format!("SoundCloud: такой тип ссылки не поддерживается ({other})")),
+    }
+}

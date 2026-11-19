@@ -61,7 +61,7 @@ export function AccountCard() {
       <div className="row gap">
         {session ? <Cloud size={22} className="accent-text" /> : <CloudOff size={22} className="muted" />}
         <div className="grow">
-          <div className="strong">Аккаунт Nota</div>
+          <div className="strong">Аккаунт Yarvi</div>
           <div className="muted small">
             {session
               ? `${session.email} · ${status === "syncing" ? "синхронизация…" : status === "error" ? "ошибка синхронизации" : `синхронизировано ${since(lastSyncAt)}`}`

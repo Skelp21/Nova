@@ -179,7 +179,7 @@ function Equalizer() {
 }
 
 function ImportModal() {
-  const [tab, setTab] = useState<"spotify" | "vk" | "yandex">("spotify");
+  const [tab, setTab] = useState<"spotify" | "apple" | "soundcloud" | "vk" | "yandex">("spotify");
   const [link, setLink] = useState("");
   const source = useSettings((s) => s.importSource);
   const [busy, setBusy] = useState(false);
@@ -189,20 +189,38 @@ function ImportModal() {
   const close = useUi((s) => s.closeModal);
   const go = useUi((s) => s.go);
 
-  const runSpotify = async () => {
+  /** Spotify / Apple Music: read the list, then find each track in the chosen service. */
+  const runMatched = async (kind: "spotify" | "apple") => {
     setBusy(true);
     setMissed([]);
     stop.current = false;
     try {
-      const pl = await api.spotifyImport(link.trim());
+      const pl = kind === "spotify" ? await api.spotifyImport(link.trim()) : await api.appleImport(link.trim());
       if (!pl.items.length) throw new Error("плейлист пустой");
       setProgress({ done: 0, total: pl.items.length });
       const res = await matchAll(pl, source, (done, total) => setProgress({ done, total }), () => stop.current);
-      const id = useLibrary.getState().createPlaylist(pl.name, res.tracks, "Spotify");
+      const id = useLibrary.getState().createPlaylist(pl.name, res.tracks, kind === "spotify" ? "Spotify" : "Apple Music");
       setMissed(res.missed);
       toast(`Импортировано ${res.tracks.length} из ${pl.items.length}`, "success");
       go({ name: "playlist", id });
       if (!res.missed.length) close();
+    } catch (e) {
+      toast(`Импорт: ${errText(e)}`, "error");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /** SoundCloud tracks are playable as-is: no matching needed. */
+  const runSoundcloud = async () => {
+    setBusy(true);
+    try {
+      const { name, tracks } = await api.soundcloudImport(link.trim());
+      if (!tracks.length) throw new Error("треков не найдено");
+      const id = useLibrary.getState().createPlaylist(name, tracks, "SoundCloud");
+      toast(`Импортировано ${tracks.length} треков`, "success");
+      go({ name: "playlist", id });
+      close();
     } catch (e) {
       toast(`Импорт: ${errText(e)}`, "error");
     } finally {
@@ -231,6 +249,12 @@ function ImportModal() {
         <button className={tab === "spotify" ? "on" : ""} onClick={() => setTab("spotify")}>
           Spotify
         </button>
+        <button className={tab === "apple" ? "on" : ""} onClick={() => setTab("apple")}>
+          Apple Music
+        </button>
+        <button className={tab === "soundcloud" ? "on" : ""} onClick={() => setTab("soundcloud")}>
+          SoundCloud
+        </button>
         <button className={tab === "vk" ? "on" : ""} onClick={() => setTab("vk")}>
           ВКонтакте
         </button>
@@ -238,12 +262,21 @@ function ImportModal() {
           Яндекс Музыка
         </button>
       </div>
-      {tab === "spotify" && (
+      {(tab === "spotify" || tab === "apple") && (
         <>
           <p className="muted">
-            Вставьте ссылку на публичный плейлист или альбом Spotify. Каждый трек будет найден в выбранном сервисе и сохранён как плейлист.
+            {tab === "spotify"
+              ? "Вставьте ссылку на публичный плейлист или альбом Spotify."
+              : "Вставьте ссылку на плейлист или альбом Apple Music (Поделиться → Скопировать ссылку). Плейлист должен быть публичным."}{" "}
+            Каждый трек будет найден в выбранном сервисе и сохранён как плейлист.
           </p>
-          <input className="input" placeholder="https://open.spotify.com/playlist/…" value={link} onChange={(e) => setLink(e.target.value)} disabled={busy} />
+          <input
+            className="input"
+            placeholder={tab === "spotify" ? "https://open.spotify.com/playlist/…" : "https://music.apple.com/…/playlist/…"}
+            value={link}
+            onChange={(e) => setLink(e.target.value)}
+            disabled={busy}
+          />
           <div className="row gap">
             <span>Искать в:</span>
             {SOURCES.map((s) => (
@@ -276,13 +309,33 @@ function ImportModal() {
                 Остановить
               </button>
             )}
-            <button className="btn primary" disabled={busy || !link.trim()} onClick={runSpotify}>
+            <button className="btn primary" disabled={busy || !link.trim()} onClick={() => runMatched(tab as "spotify" | "apple")}>
               {busy ? <Loader2 size={16} className="spin" /> : null} Импортировать
             </button>
           </div>
         </>
       )}
-      {tab !== "spotify" && (
+      {tab === "soundcloud" && (
+        <>
+          <p className="muted">
+            Вставьте ссылку на плейлист или альбом SoundCloud, на профиль (перенесутся его лайки) или на отдельный трек. Треки сохранятся как
+            плейлист и будут играть прямо из SoundCloud.
+          </p>
+          <input
+            className="input"
+            placeholder="https://soundcloud.com/user/sets/… или https://soundcloud.com/user/likes"
+            value={link}
+            onChange={(e) => setLink(e.target.value)}
+            disabled={busy}
+          />
+          <div className="modal-actions">
+            <button className="btn primary" disabled={busy || !link.trim()} onClick={runSoundcloud}>
+              {busy ? <Loader2 size={16} className="spin" /> : null} Импортировать
+            </button>
+          </div>
+        </>
+      )}
+      {(tab === "vk" || tab === "yandex") && (
         <>
           <p className="muted">
             {tab === "vk"

@@ -1,3 +1,4 @@
+pub mod apple;
 pub mod lyrics;
 pub mod soundcloud;
 pub mod spotify;

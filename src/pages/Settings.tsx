@@ -151,7 +151,7 @@ export function SettingsPage({ tab: initial }: { tab?: string }) {
           ))}
           <div className="row gap mt">
             <button className="btn ghost" onClick={() => useUi.getState().openModal({ type: "import" })}>
-              Импорт из Spotify / ВК / Яндекса
+              Перенести музыку из Spotify, Apple Music, SoundCloud, ВК, Яндекса
             </button>
           </div>
         </>
@@ -203,7 +203,7 @@ export function SettingsPage({ tab: initial }: { tab?: string }) {
           <Row title="Пропускать «Не нравится» в волне" desc="Треки с дизлайком не попадут в «Мою волну»">
             <Switch checked={s.waveSkipDisliked} onChange={(v) => s.set({ waveSkipDisliked: v })} />
           </Row>
-          <Row title="YouTube через yt-dlp" desc="Если YouTube перестанет отдавать поток, установите yt-dlp в PATH — Nota подхватит его сама">
+          <Row title="YouTube через yt-dlp" desc="Если YouTube перестанет отдавать поток, установите yt-dlp в PATH — Yarvi подхватит его сама">
             <button className="btn ghost small" onClick={() => openUrl("https://github.com/yt-dlp/yt-dlp/releases/latest")}>
               Скачать yt-dlp
             </button>
@@ -290,7 +290,7 @@ export function SettingsPage({ tab: initial }: { tab?: string }) {
       {tab === "about" && (
         <div className="about">
           <img src="/logo.svg" width={64} height={64} />
-          <h2>Nota 0.1.0</h2>
+          <h2>Yarvi 0.1.0</h2>
           <p className="muted">
             Агрегатор музыки: YouTube Music, SoundCloud, ВКонтакте и Яндекс Музыка в одном плеере. Без рекламы, без серверов — всё хранится у
             вас на компьютере.

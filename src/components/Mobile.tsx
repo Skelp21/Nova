@@ -78,7 +78,7 @@ export function MobileHeader() {
       ) : (
         <div className="brand m-brand">
           <img src="/logo.svg" width={24} height={24} />
-          <span>Nota</span>
+          <span>Yarvi</span>
         </div>
       )}
     </header>

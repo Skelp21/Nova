@@ -1,6 +1,6 @@
-# Builds Nota in the cloud: Windows installer + Android APK.
-# GitHub → Actions → "Build Nota" → Run workflow. Results: "Artifacts" at the bottom of the run.
-name: Build Nota
+# Builds Yarvi in the cloud: Windows installer + Android APK.
+# GitHub → Actions → "Build Yarvi" → Run workflow. Results: "Artifacts" at the bottom of the run.
+name: Build Yarvi
 
 on:
   workflow_dispatch:
@@ -29,11 +29,11 @@ jobs:
       - run: npx tauri build
       - uses: actions/upload-artifact@v4
         with:
-          name: Nota-Windows
+          name: Yarvi-Windows
           path: |
             src-tauri/target/release/bundle/nsis/*.exe
             src-tauri/target/release/bundle/msi/*.msi
-            src-tauri/target/release/nota.exe
+            src-tauri/target/release/yarvi.exe
 
   android:
     runs-on: ubuntu-latest
@@ -71,11 +71,11 @@ jobs:
       - name: Collect APK
         run: |
           mkdir -p out
-          find src-tauri/gen/android/app/build/outputs/apk -name "*.apk" -exec cp {} out/Nota.apk \;
+          find src-tauri/gen/android/app/build/outputs/apk -name "*.apk" -exec cp {} out/Yarvi.apk \;
       - uses: actions/upload-artifact@v4
         with:
-          name: Nota-Android
-          path: out/Nota.apk
+          name: Yarvi-Android
+          path: out/Yarvi.apk
 
   ios:
     runs-on: macos-latest   # cloud Mac with Xcode
@@ -102,7 +102,7 @@ jobs:
       - name: Build unsigned app
         run: |
           APPLE=src-tauri/gen/apple
-          LIB=src-tauri/target/aarch64-apple-ios/release/libnota_lib.a
+          LIB=src-tauri/target/aarch64-apple-ios/release/libyarvi_lib.a
           for cfg in release Release; do
             mkdir -p "$APPLE/Externals/arm64/$cfg"
             cp "$LIB" "$APPLE/Externals/arm64/$cfg/libapp.a"
@@ -114,15 +114,15 @@ jobs:
           PROJECT=$(find "$APPLE" -maxdepth 1 -name "*.xcodeproj" | head -n 1)
           SCHEME=$(xcodebuild -list -project "$PROJECT" -json | python3 -c "import sys,json; s=json.load(sys.stdin)['project']['schemes']; print(next(x for x in s if 'iOS' in x))")
           xcodebuild -project "$PROJECT" -scheme "$SCHEME" -configuration release -sdk iphoneos -arch arm64 \
-            -archivePath build/Nota.xcarchive archive \
+            -archivePath build/Yarvi.xcarchive archive \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" DEVELOPMENT_TEAM=""
       - name: Package .ipa
         run: |
-          APP=$(find build/Nota.xcarchive/Products/Applications -maxdepth 1 -name "*.app" | head -n 1)
+          APP=$(find build/Yarvi.xcarchive/Products/Applications -maxdepth 1 -name "*.app" | head -n 1)
           mkdir -p Payload out
           cp -R "$APP" Payload/
-          zip -qr out/Nota.ipa Payload
+          zip -qr out/Yarvi.ipa Payload
       - uses: actions/upload-artifact@v4
         with:
-          name: Nota-iPhone
-          path: out/Nota.ipa
+          name: Yarvi-iPhone
+          path: out/Yarvi.ipa

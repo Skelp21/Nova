@@ -1,5 +1,5 @@
 #!/bin/bash
-# Builds Nota for iPhone on a Mac. Double-click in Finder.
+# Builds Yarvi for iPhone on a Mac. Double-click in Finder.
 # Installs Homebrew / Node / CocoaPods / Rust if missing, then builds a
 # development-signed .ipa you can install on your own iPhone.
 set -e
@@ -52,9 +52,9 @@ npx tauri ios build --export-method debugging
 
 IPA="$(find src-tauri/gen/apple/build -name '*.ipa' | head -n 1)"
 mkdir -p output
-cp "$IPA" output/Nota.ipa
-printf "\n\033[32mГотово: output/Nota.ipa\033[0m\n"
-echo "Установка: Xcode → Window → Devices and Simulators → ваш iPhone → «+» → выберите Nota.ipa."
+cp "$IPA" output/Yarvi.ipa
+printf "\n\033[32mГотово: output/Yarvi.ipa\033[0m\n"
+echo "Установка: Xcode → Window → Devices and Simulators → ваш iPhone → «+» → выберите Yarvi.ipa."
 echo "На iPhone: Настройки → Основные → VPN и управление устройством → доверять разработчику."
 open output
 open -a Xcode

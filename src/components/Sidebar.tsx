@@ -34,7 +34,7 @@ export function Sidebar() {
     <aside className="sidebar">
       <div className="brand" data-tauri-drag-region>
         <img src="/logo.svg" width={26} height={26} />
-        <span>Nota</span>
+        <span>Yarvi</span>
       </div>
 
       <nav className="nav-group">
@@ -74,7 +74,7 @@ export function Sidebar() {
             </div>
           </button>
         ))}
-        {!playlists.length && <div className="muted small pad">Создайте плейлист или импортируйте из Spotify</div>}
+        {!playlists.length && <div className="muted small pad">Создайте плейлист или перенесите из других сервисов</div>}
       </div>
 
       <nav className="nav-group bottom">
@@ -90,7 +90,7 @@ function AccountChip() {
   const status = useAccount((s) => s.status);
   const go = useUi((s) => s.go);
   return (
-    <button className="nav-item" onClick={() => go({ name: "settings", tab: "accounts" })} title="Аккаунт Nota">
+    <button className="nav-item" onClick={() => go({ name: "settings", tab: "accounts" })} title="Аккаунт Yarvi">
       {session ? <Cloud size={18} className={status === "error" ? "danger-text" : "accent-text"} /> : <CloudOff size={18} />}
       <span className="grow ellipsis">{session ? session.email : "Войти в аккаунт"}</span>
     </button>

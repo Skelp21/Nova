@@ -272,7 +272,7 @@ pub static TOOLS_DIR: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceL
 #[cfg(desktop)]
 const YTDLP_URL: &str = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe";
 
-/// Finds yt-dlp: next to Nota.exe, in the tools folder, or in PATH.
+/// Finds yt-dlp: next to Yarvi.exe, in the tools folder, or in PATH.
 /// Downloads the official build into the tools folder when missing.
 #[cfg(desktop)]
 async fn ytdlp_path() -> Result<std::path::PathBuf, String> {

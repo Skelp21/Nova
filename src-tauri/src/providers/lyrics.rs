@@ -19,7 +19,7 @@ fn to_lyrics(v: &Value) -> Lyrics {
 }
 
 pub async fn find(title: &str, artist: &str, duration: u32) -> Result<Lyrics, String> {
-    let ua = "Nota/0.1 (https://github.com/)";
+    let ua = "Yarvi/0.1 (https://github.com/)";
     let title_c = clean_title(title);
     let artist_c = first_artist(artist);
     let dur = duration.to_string();
