@@ -94,12 +94,26 @@ jobs:
       - name: iOS project
         run: npx tauri ios init --ci
       - run: npm run build
+      # Build the Rust core ourselves (Tauri's Xcode step needs a signing team).
+      - name: Rust for iOS
+        working-directory: src-tauri
+        run: cargo build --release --target aarch64-apple-ios --lib --features tauri/custom-protocol
       # Unsigned build: Sideloadly / AltStore re-sign it with your Apple ID on install.
       - name: Build unsigned app
         run: |
-          PROJECT=$(find src-tauri/gen/apple -maxdepth 1 -name "*.xcodeproj" | head -n 1)
+          APPLE=src-tauri/gen/apple
+          LIB=src-tauri/target/aarch64-apple-ios/release/libnota_lib.a
+          for cfg in release Release; do
+            mkdir -p "$APPLE/Externals/arm64/$cfg"
+            cp "$LIB" "$APPLE/Externals/arm64/$cfg/libapp.a"
+          done
+          PBX=$(find "$APPLE" -name project.pbxproj | head -n 1)
+          # Rust is already built: make Xcode's "Build Rust Code" phase a no-op.
+          perl -0pi -e 's/shellScript = "(?:[^"\\]|\\.)*?xcode-script(?:[^"\\]|\\.)*";/shellScript = "true";/g' "$PBX"
+          grep -c 'shellScript = "true"' "$PBX"
+          PROJECT=$(find "$APPLE" -maxdepth 1 -name "*.xcodeproj" | head -n 1)
           SCHEME=$(xcodebuild -list -project "$PROJECT" -json | python3 -c "import sys,json; s=json.load(sys.stdin)['project']['schemes']; print(next(x for x in s if 'iOS' in x))")
-          xcodebuild -project "$PROJECT" -scheme "$SCHEME" -configuration release -sdk iphoneos \
+          xcodebuild -project "$PROJECT" -scheme "$SCHEME" -configuration release -sdk iphoneos -arch arm64 \
             -archivePath build/Nota.xcarchive archive \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" DEVELOPMENT_TEAM=""
       - name: Package .ipa
