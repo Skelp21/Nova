@@ -48,6 +48,9 @@ let extendingWave = false;
 /** Tracks we already tried to replace with another service's copy. */
 const triedAlt = new Set<string>();
 let handlingError = false;
+/** A track that hasn't started within this time counts as failed. */
+const START_TIMEOUT_MS = 12000;
+let startTimer: ReturnType<typeof setTimeout> | undefined;
 
 /**
  * When a track can't be played (blocked stream, removed upload…), look for the
@@ -299,6 +302,15 @@ async function loadCurrent(autoplay: boolean, startAt = 0) {
     if (token !== loadToken) return; // user switched track meanwhile
     engine.load(stream);
     if (startAt > 0) engine.seek(startAt);
+    // Phones often just hang on a blocked stream without any error event.
+    clearTimeout(startTimer);
+    startTimer = setTimeout(() => {
+      const st = usePlayer.getState();
+      if (token !== loadToken || st.playing || engine.el.currentTime > 0) return;
+      if (engine.el.paused && !st.loading) return; // waiting for the user to press play
+      engine.stop();
+      onTrackFailed(track, "не загрузился за 12 секунд");
+    }, START_TIMEOUT_MS);
     if (autoplay) await engine.play();
     useLibrary.getState().pushHistory(track);
     failStreak = 0;
@@ -346,7 +358,11 @@ export function bindEngine() {
   el.addEventListener("play", () => usePlayer.setState({ playing: true }));
   el.addEventListener("pause", () => usePlayer.setState({ playing: false }));
   el.addEventListener("waiting", () => usePlayer.setState({ loading: true }));
-  el.addEventListener("playing", () => usePlayer.setState({ loading: false, playing: true }));
+  el.addEventListener("playing", () => {
+    clearTimeout(startTimer);
+    failStreak = 0;
+    usePlayer.setState({ loading: false, playing: true });
+  });
   el.addEventListener("canplay", () => usePlayer.setState({ loading: false }));
   el.addEventListener("ended", () => usePlayer.getState().next(true));
   el.addEventListener("error", () => {

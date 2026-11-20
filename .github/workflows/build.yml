@@ -92,6 +92,22 @@ jobs:
       - run: npm install
       - name: iOS project
         run: npx tauri ios init --ci
+      # Our build skips Tauri's Xcode step, so merge Info.ios.plist by hand:
+      # allow the in-app audio server on 127.0.0.1 and background playback.
+      - name: iOS permissions (Info.plist)
+        run: |
+          PB=/usr/libexec/PlistBuddy
+          for PLIST in $(find src-tauri/gen/apple -name Info.plist -path "*_iOS*"); do
+            echo "patching $PLIST"
+            $PB -c "Delete :NSAppTransportSecurity" "$PLIST" 2>/dev/null || true
+            $PB -c "Add :NSAppTransportSecurity dict" "$PLIST"
+            $PB -c "Add :NSAppTransportSecurity:NSAllowsLocalNetworking bool true" "$PLIST"
+            $PB -c "Add :NSAppTransportSecurity:NSAllowsArbitraryLoadsInMedia bool true" "$PLIST"
+            $PB -c "Delete :UIBackgroundModes" "$PLIST" 2>/dev/null || true
+            $PB -c "Add :UIBackgroundModes array" "$PLIST"
+            $PB -c "Add :UIBackgroundModes:0 string audio" "$PLIST"
+            $PB -c "Print" "$PLIST" | grep -E "NSAllowsLocalNetworking|audio"
+          done
       - run: npm run build
       # Build the Rust core ourselves (Tauri's Xcode step needs a signing team).
       - name: Rust for iOS
