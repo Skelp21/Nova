@@ -217,7 +217,136 @@ pub async fn stream(video_id: &str) -> Result<RawStream, String> {
             Err(e) => errors.push(e),
         }
     }
+    // Public Piped / Invidious servers fetch the stream for us and proxy it:
+    // the main way on phones, where yt-dlp can't run.
+    match stream_via_mirrors(video_id).await {
+        Ok(s) => return Ok(s),
+        Err(e) => errors.push(e),
+    }
     Err(format!("YouTube не отдал поток ({})", errors.join("; ")))
+}
+
+const PIPED_FALLBACK: &[&str] = &["https://pipedapi.kavin.rocks", "https://pipedapi.adminforge.de", "https://api.piped.private.coffee"];
+const INVIDIOUS_FALLBACK: &[&str] = &["https://inv.nadeko.net", "https://invidious.nerdvpn.de", "https://yewtu.be"];
+
+/// Healthy mirror lists, refreshed at most every 6 hours.
+static MIRRORS: std::sync::Mutex<Option<(std::time::Instant, Vec<String>, Vec<String>)>> = std::sync::Mutex::new(None);
+
+async fn mirror_lists() -> (Vec<String>, Vec<String>) {
+    if let Ok(g) = MIRRORS.lock() {
+        if let Some((at, p, i)) = g.as_ref() {
+            if at.elapsed() < std::time::Duration::from_secs(6 * 3600) {
+                return (p.clone(), i.clone());
+            }
+        }
+    }
+    let quick = std::time::Duration::from_secs(6);
+    let mut piped: Vec<String> = Vec::new();
+    if let Ok(r) = client().get("https://piped-instances.kavin.rocks/").timeout(quick).send().await {
+        if let Ok(v) = r.json::<Value>().await {
+            for it in v.as_array().cloned().unwrap_or_default() {
+                if let Some(api) = it.get("api_url").and_then(|a| a.as_str()) {
+                    piped.push(api.trim_end_matches('/').to_string());
+                }
+            }
+        }
+    }
+    let mut inv: Vec<String> = Vec::new();
+    if let Ok(r) = client().get("https://api.invidious.io/instances.json?sort_by=health").timeout(quick).send().await {
+        if let Ok(v) = r.json::<Value>().await {
+            for it in v.as_array().cloned().unwrap_or_default() {
+                let info = it.get(1);
+                let https = info.and_then(|i| i.get("type")).and_then(|t| t.as_str()) == Some("https");
+                let api = info.and_then(|i| i.get("api")).and_then(|a| a.as_bool()).unwrap_or(false);
+                if let (true, true, Some(uri)) = (https, api, info.and_then(|i| i.get("uri")).and_then(|u| u.as_str())) {
+                    inv.push(uri.trim_end_matches('/').to_string());
+                }
+            }
+        }
+    }
+    for f in PIPED_FALLBACK {
+        if !piped.iter().any(|p| p == f) {
+            piped.push(f.to_string());
+        }
+    }
+    for f in INVIDIOUS_FALLBACK {
+        if !inv.iter().any(|p| p == f) {
+            inv.push(f.to_string());
+        }
+    }
+    piped.truncate(4);
+    inv.truncate(4);
+    if let Ok(mut g) = MIRRORS.lock() {
+        *g = Some((std::time::Instant::now(), piped.clone(), inv.clone()));
+    }
+    (piped, inv)
+}
+
+fn audio_ext(mime: &str) -> &'static str {
+    if mime.contains("mp4") {
+        "m4a"
+    } else {
+        "webm"
+    }
+}
+
+async fn stream_via_mirrors(video_id: &str) -> Result<RawStream, String> {
+    let (piped, inv) = mirror_lists().await;
+    let t = std::time::Duration::from_secs(6);
+    let ua = crate::http::BROWSER_UA;
+    // Piped: /streams/<id> → audioStreams[] with proxied URLs.
+    for base in &piped {
+        let Ok(r) = client().get(format!("{base}/streams/{video_id}")).timeout(t).send().await else { continue };
+        let Ok(v) = r.json::<Value>().await else { continue };
+        let mut streams = v.get("audioStreams").and_then(|a| a.as_array()).cloned().unwrap_or_default();
+        // m4a first: plays everywhere (iOS can't do webm/opus).
+        streams.sort_by_key(|s| {
+            let mime = s.get("mimeType").and_then(|m| m.as_str()).unwrap_or("");
+            let br = s.get("bitrate").and_then(|b| b.as_i64()).unwrap_or(0);
+            (if mime.contains("mp4") { 0 } else { 1 }, -br)
+        });
+        for st in streams.iter().take(2) {
+            let Some(url) = st.get("url").and_then(|u| u.as_str()) else { continue };
+            if playable(url, &[], ua).await {
+                let mime = st.get("mimeType").and_then(|m| m.as_str()).unwrap_or("");
+                return Ok(RawStream { url: url.to_string(), hls: false, profile: "browser", ext: audio_ext(mime), headers: vec![] });
+            }
+        }
+    }
+    // Invidious: /api/v1/videos/<id>?local=true → adaptiveFormats proxied by the instance.
+    for base in &inv {
+        let Ok(r) = client()
+            .get(format!("{base}/api/v1/videos/{video_id}?local=true&fields=adaptiveFormats"))
+            .timeout(t)
+            .send()
+            .await
+        else {
+            continue;
+        };
+        let Ok(v) = r.json::<Value>().await else { continue };
+        let mut formats: Vec<Value> = v
+            .get("adaptiveFormats")
+            .and_then(|a| a.as_array())
+            .cloned()
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|f| f.get("type").and_then(|t| t.as_str()).map_or(false, |t| t.starts_with("audio/")))
+            .collect();
+        formats.sort_by_key(|f| {
+            let mime = f.get("type").and_then(|m| m.as_str()).unwrap_or("");
+            let br: i64 = f.get("bitrate").and_then(|b| b.as_str().and_then(|s| s.parse().ok()).or(b.as_i64())).unwrap_or(0);
+            (if mime.contains("mp4") { 0 } else { 1 }, -br)
+        });
+        for f in formats.iter().take(2) {
+            let Some(u) = f.get("url").and_then(|u| u.as_str()) else { continue };
+            let url = if u.starts_with('/') { format!("{base}{u}") } else { u.to_string() };
+            if playable(&url, &[], ua).await {
+                let mime = f.get("type").and_then(|m| m.as_str()).unwrap_or("");
+                return Ok(RawStream { url, hls: false, profile: "browser", ext: audio_ext(mime), headers: vec![] });
+            }
+        }
+    }
+    Err("зеркала YouTube недоступны".into())
 }
 
 /// Fetches the first bytes of a stream to make sure it really plays.

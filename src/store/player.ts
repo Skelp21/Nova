@@ -45,34 +45,41 @@ interface PlayerState {
 let loadToken = 0;
 let failStreak = 0;
 let extendingWave = false;
-/** Tracks we already tried to replace with another service's copy. */
-const triedAlt = new Set<string>();
 let handlingError = false;
 /** A track that hasn't started within this time counts as failed. */
 const START_TIMEOUT_MS = 12000;
 let startTimer: ReturnType<typeof setTimeout> | undefined;
 
+/** Services already tried for a failing song (keyed by the original track id). */
+const triedSources = new Map<string, Set<Source>>();
+/** Replacement copy id -> the original track it stands in for. */
+const altOf = new Map<string, Track>();
+
 /**
- * When a track can't be played (blocked stream, removed upload…), look for the
- * same song in another enabled service and play that copy instead of skipping.
+ * When a track can't be played (blocked stream, encrypted upload…), look for the
+ * same song in other enabled services, one after another, and play the first copy
+ * that is found. If that copy fails too, the next service is tried.
  */
-async function playAlternative(track: Track): Promise<boolean> {
-  if (triedAlt.has(track.id)) return false;
-  triedAlt.add(track.id);
+async function playAlternative(failed: Track): Promise<boolean> {
+  const original = altOf.get(failed.id) ?? failed;
+  const tried = triedSources.get(original.id) ?? new Set<Source>([original.source]);
+  tried.add(failed.source);
+  triedSources.set(original.id, tried);
   const enabled = useSettings.getState().enabledSources;
   const order: Source[] = ["soundcloud", "youtube", "yandex", "vk"];
-  for (const src of order.filter((s) => s !== track.source && enabled[s])) {
+  for (const src of order.filter((s) => !tried.has(s) && enabled[s])) {
+    tried.add(src);
     try {
-      const found = await api.search(src, `${track.artist} ${track.title}`, 6);
-      const alt = best({ title: track.title, artist: track.artist, duration: track.duration }, found);
+      const found = await api.search(src, `${original.artist} ${original.title}`, 6);
+      const alt = best({ title: original.title, artist: original.artist, duration: original.duration }, found);
       if (!alt) continue;
       const st = usePlayer.getState();
-      if (st.queue[st.index]?.id !== track.id) return true; // user moved on
+      if (st.queue[st.index]?.id !== failed.id) return true; // user moved on
       const queue = st.queue.slice();
       queue[st.index] = alt;
-      triedAlt.add(alt.id);
+      altOf.set(alt.id, original);
       usePlayer.setState({ queue });
-      toast(`«${track.title}» играет из ${sourceName(src)}`);
+      toast(`«${original.title}» играет из ${sourceName(src)}`);
       loadCurrent(true);
       return true;
     } catch {
