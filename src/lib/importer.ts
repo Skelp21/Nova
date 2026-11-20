@@ -31,7 +31,7 @@ export async function matchAll(
   source: Source,
   onProgress: (done: number, total: number) => void,
   shouldStop: () => boolean,
-): Promise<{ tracks: Track[]; missed: string[] }> {
+): Promise<{ tracks: Track[]; missed: string[]; results: (Track | null)[] }> {
   const results: (Track | null)[] = new Array(pl.items.length).fill(null);
   const missed: string[] = [];
   let next = 0;
@@ -51,5 +51,5 @@ export async function matchAll(
     }
   };
   await Promise.all(Array.from({ length: 4 }, worker));
-  return { tracks: results.filter((t): t is Track => !!t), missed };
+  return { tracks: results.filter((t): t is Track => !!t), missed, results };
 }

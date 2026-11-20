@@ -19,7 +19,8 @@ export type Modal =
   | { type: "renamePlaylist"; id: string }
   | { type: "equalizer" }
   | { type: "import" }
-  | { type: "trackInfo"; track: Track };
+  | { type: "trackInfo"; track: Track }
+  | { type: "linkPlaylist"; id: string };
 
 export interface MenuState {
   x: number;

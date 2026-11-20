@@ -43,6 +43,22 @@ export interface Playlist {
   createdAt: number;
   /** Where it came from, for display. */
   origin?: string;
+  /** Link to the source playlist, for "Обновить" / auto-update. */
+  link?: PlaylistLink;
+}
+
+export type LinkKind = "spotify" | "apple" | "soundcloud" | "vk" | "yandex";
+
+export interface PlaylistLink {
+  kind: LinkKind;
+  /** Source URL (Spotify / Apple Music / SoundCloud). */
+  url?: string;
+  /** Service the Spotify / Apple Music tracks were matched into. */
+  matchSource?: Source;
+  /** Source item key (artist|title or track id) -> track id in this playlist. */
+  keys?: Record<string, string>;
+  auto?: boolean;
+  updatedAt?: number;
 }
 
 export interface HistoryEntry {

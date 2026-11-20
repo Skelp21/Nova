@@ -1,5 +1,8 @@
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
-import { ChevronRight, Download, FolderOpen, Heart, History, Import, Pencil, Plus, Trash2 } from "lucide-react";
+import { ChevronRight, Download, FolderOpen, Heart, History, Import, Link2, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { useState } from "react";
+import { LINK_NAMES, refreshPlaylist } from "../lib/playlistRefresh";
+import type { Playlist } from "../lib/types";
 import { AccountCard } from "../components/AccountCard";
 import { useAccount } from "../store/account";
 import { Mosaic } from "../components/Cover";
@@ -109,13 +112,14 @@ export function PlaylistPage({ id }: { id: string }) {
   if (!pl) return <div className="empty">Плейлист не найден</div>;
   return (
     <Collection
-      kicker={pl.origin ? `Плейлист · из ${pl.origin}` : "Плейлист"}
+      kicker={pl.origin ? `Плейлист · из ${pl.origin}${pl.link ? ` · ${ago(pl.link.updatedAt)}` : ""}` : "Плейлист"}
       title={pl.name}
       tracks={pl.tracks}
       context={pl.name}
       playlistId={pl.id}
       actions={
         <>
+          <RefreshControls pl={pl} />
           <button className="icon-btn" title="Переименовать" onClick={() => openModal({ type: "renamePlaylist", id: pl.id })}>
             <Pencil size={17} />
           </button>
@@ -174,5 +178,51 @@ export function LibraryHub() {
       </div>
       <PlaylistsPage embedded />
     </div>
+  );
+}
+
+function ago(ts?: number): string {
+  if (!ts) return "ещё не обновлялся";
+  const m = Math.round((Date.now() - ts) / 60000);
+  if (m < 1) return "обновлён только что";
+  if (m < 60) return `обновлён ${m} мин назад`;
+  const h = Math.round(m / 60);
+  if (h < 24) return `обновлён ${h} ч назад`;
+  return `обновлён ${new Date(ts).toLocaleDateString("ru-RU")}`;
+}
+
+/** "Обновить" + per-playlist auto-update toggle for imported playlists. */
+function RefreshControls({ pl }: { pl: Playlist }) {
+  const [busy, setBusy] = useState(false);
+  const openModal = useUi((s) => s.openModal);
+  if (!pl.link)
+    return (
+      <button className="btn ghost round" title="Связать с плейлистом в Spotify, Apple Music или SoundCloud" onClick={() => openModal({ type: "linkPlaylist", id: pl.id })}>
+        <Link2 size={16} /> Связать
+      </button>
+    );
+  const link = pl.link;
+  return (
+    <>
+      <button
+        className="btn ghost round"
+        disabled={busy}
+        title={`Подтянуть изменения из ${LINK_NAMES[link.kind]} · ${ago(link.updatedAt)}`}
+        onClick={async () => {
+          setBusy(true);
+          await refreshPlaylist(pl.id);
+          setBusy(false);
+        }}
+      >
+        <RefreshCw size={16} className={busy ? "spin" : ""} /> Обновить
+      </button>
+      <button
+        className={`chip ${link.auto ? "on" : ""}`}
+        title={link.auto ? "Плейлист обновляется сам каждые 6 часов" : "Включить автообновление (каждые 6 часов)"}
+        onClick={() => useLibrary.getState().updatePlaylist(pl.id, { link: { ...link, auto: !link.auto } })}
+      >
+        Авто {link.auto ? "вкл" : "выкл"}
+      </button>
+    </>
   );
 }

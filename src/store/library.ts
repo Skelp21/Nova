@@ -20,6 +20,7 @@ interface LibraryState extends LibraryData {
   toggleDislike: (t: Track) => void;
   createPlaylist: (name: string, tracks?: Track[], origin?: string) => string;
   renamePlaylist: (id: string, name: string) => void;
+  updatePlaylist: (id: string, patch: Partial<Playlist>) => void;
   deletePlaylist: (id: string) => void;
   addToPlaylist: (id: string, tracks: Track[]) => number;
   removeFromPlaylist: (id: string, index: number) => void;
@@ -95,6 +96,9 @@ export const useLibrary = create<LibraryState>((set, get) => ({
 
   renamePlaylist: (id, name) =>
     set({ playlists: get().playlists.map((p) => (p.id === id ? { ...p, name: name.trim() || p.name } : p)) }),
+
+  updatePlaylist: (id, patch) =>
+    set({ playlists: get().playlists.map((p) => (p.id === id ? { ...p, ...patch } : p)) }),
 
   deletePlaylist: (id) => {
     set({ playlists: get().playlists.filter((p) => p.id !== id) });

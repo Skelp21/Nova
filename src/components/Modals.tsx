@@ -5,6 +5,7 @@ import { api, errText } from "../lib/api";
 import { EQ_FREQS, EQ_PRESETS } from "../lib/audio";
 import { fmtTime } from "../lib/format";
 import { matchAll } from "../lib/importer";
+import { attachLink, detectKind, linkFromMatch, linkFromTracks, LINK_NAMES, refreshPlaylist } from "../lib/playlistRefresh";
 import { SOURCES, sourceName, type Source } from "../lib/types";
 import { useLibrary } from "../store/library";
 import { useSettings } from "../store/settings";
@@ -200,6 +201,7 @@ function ImportModal() {
       setProgress({ done: 0, total: pl.items.length });
       const res = await matchAll(pl, source, (done, total) => setProgress({ done, total }), () => stop.current);
       const id = useLibrary.getState().createPlaylist(pl.name, res.tracks, kind === "spotify" ? "Spotify" : "Apple Music");
+      useLibrary.getState().updatePlaylist(id, { link: linkFromMatch(kind, link.trim(), source, pl, res.results) });
       setMissed(res.missed);
       toast(`Импортировано ${res.tracks.length} из ${pl.items.length}`, "success");
       go({ name: "playlist", id });
@@ -218,6 +220,7 @@ function ImportModal() {
       const { name, tracks } = await api.soundcloudImport(link.trim());
       if (!tracks.length) throw new Error("треков не найдено");
       const id = useLibrary.getState().createPlaylist(name, tracks, "SoundCloud");
+      useLibrary.getState().updatePlaylist(id, { link: linkFromTracks("soundcloud", tracks, link.trim()) });
       toast(`Импортировано ${tracks.length} треков`, "success");
       go({ name: "playlist", id });
       close();
@@ -233,6 +236,7 @@ function ImportModal() {
     try {
       const tracks = kind === "vk" ? await api.vkMyAudio() : await api.yandexLikes();
       const id = useLibrary.getState().createPlaylist(kind === "vk" ? "Моя музыка ВК" : "Мне нравится (Яндекс)", tracks, sourceName(kind));
+      useLibrary.getState().updatePlaylist(id, { link: linkFromTracks(kind, tracks) });
       toast(`Импортировано ${tracks.length} треков`, "success");
       go({ name: "playlist", id });
       close();
@@ -353,6 +357,42 @@ function ImportModal() {
   );
 }
 
+/** Connect an existing playlist to its Spotify / Apple Music / SoundCloud original. */
+function LinkPlaylist({ id }: { id: string }) {
+  const pl = useLibrary((s) => s.playlists.find((p) => p.id === id));
+  const [url, setUrl] = useState("");
+  const close = useUi((s) => s.closeModal);
+  const kind = detectKind(url);
+  if (!pl) return null;
+  return (
+    <Shell title="Связать с оригиналом">
+      <p className="muted">
+        Вставьте ссылку на этот же плейлист в Spotify, Apple Music или SoundCloud. Тогда кнопка «Обновить» будет подтягивать новые треки.
+      </p>
+      <input className="input" autoFocus placeholder="https://…" value={url} onChange={(e) => setUrl(e.target.value)} />
+      {url && !kind && <div className="hint error">Это не ссылка Spotify, Apple Music или SoundCloud</div>}
+      <div className="modal-actions">
+        <button className="btn ghost" onClick={close}>
+          Отмена
+        </button>
+        <button
+          className="btn primary"
+          disabled={!kind}
+          onClick={() => {
+            if (attachLink(pl, url)) {
+              close();
+              toast(`Связано с ${LINK_NAMES[kind!]}`, "success");
+              refreshPlaylist(pl.id);
+            }
+          }}
+        >
+          Связать и обновить
+        </button>
+      </div>
+    </Shell>
+  );
+}
+
 function TrackInfo({ track }: { track: import("../lib/types").Track }) {
   const dl = useLibrary((s) => s.downloads[track.id]);
   return (
@@ -421,5 +461,7 @@ export function Modals() {
       return <ImportModal />;
     case "trackInfo":
       return <TrackInfo track={modal.track} />;
+    case "linkPlaylist":
+      return <LinkPlaylist id={modal.id} />;
   }
 }
