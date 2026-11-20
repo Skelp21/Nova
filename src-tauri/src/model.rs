@@ -54,6 +54,8 @@ pub struct RawStream {
     /// Header profile the proxy must use for the upstream request.
     pub profile: &'static str,
     pub ext: &'static str,
+    /// Extra upstream headers (e.g. the ones yt-dlp says the URL needs).
+    pub headers: Vec<(String, String)>,
 }
 
 #[derive(Serialize, Clone, Debug)]

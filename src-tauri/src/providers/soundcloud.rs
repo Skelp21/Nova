@@ -131,7 +131,7 @@ pub async fn stream(track_id: &str) -> Result<RawStream, String> {
             Ok(resolved) => {
                 if let Some(url) = resolved.get("url").and_then(|u| u.as_str()) {
                     let ext = if mime.contains("mpeg") { "mp3" } else if mime.contains("mp4") || mime.contains("aac") { "m4a" } else { "ogg" };
-                    return Ok(RawStream { url: url.to_string(), hls, profile: "browser", ext });
+                    return Ok(RawStream { url: url.to_string(), hls, profile: "browser", ext, headers: vec![] });
                 }
             }
             Err(e) => last_err = e,

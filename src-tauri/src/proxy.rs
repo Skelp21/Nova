@@ -22,12 +22,44 @@ use tokio::io::{AsyncReadExt, AsyncSeekExt};
 
 static PORT: OnceLock<u16> = OnceLock::new();
 static KEY: OnceLock<String> = OnceLock::new();
+/// Per-stream upstream headers (from yt-dlp), referenced by `h=<id>` in URLs.
+static HEADERS: std::sync::Mutex<Option<std::collections::HashMap<String, Vec<(String, String)>>>> = std::sync::Mutex::new(None);
+
+fn store_headers(h: &[(String, String)]) -> Option<String> {
+    if h.is_empty() {
+        return None;
+    }
+    let id: String = rand::thread_rng().sample_iter(&Alphanumeric).take(12).map(char::from).collect();
+    let mut g = HEADERS.lock().ok()?;
+    let map = g.get_or_insert_with(Default::default);
+    if map.len() > 500 {
+        map.clear(); // old streams expire anyway
+    }
+    map.insert(id.clone(), h.to_vec());
+    Some(id)
+}
+
+fn headers_for(id: &str) -> Vec<(String, String)> {
+    HEADERS.lock().ok().and_then(|g| g.as_ref().and_then(|m| m.get(id).cloned())).unwrap_or_default()
+}
+
+/// Profile User-Agent plus any stored per-stream headers (they win).
+pub fn apply_headers(rb: reqwest::RequestBuilder, profile: &str, extra: &[(String, String)]) -> reqwest::RequestBuilder {
+    let has_ua = extra.iter().any(|(k, _)| k.eq_ignore_ascii_case("user-agent"));
+    let mut rb = if has_ua { rb } else { apply_profile(rb, profile) };
+    for (k, v) in extra {
+        rb = rb.header(k.as_str(), v.as_str());
+    }
+    rb
+}
 
 #[derive(Deserialize)]
 struct RemoteQ {
     u: String,
     #[serde(default)]
     c: Option<String>,
+    #[serde(default)]
+    h: Option<String>,
     k: String,
 }
 
@@ -68,10 +100,11 @@ fn remote_url(route: &str, url: &str, profile: &str) -> String {
 }
 
 pub fn proxied(raw: &RawStream) -> StreamInfo {
-    StreamInfo {
-        url: remote_url(if raw.hls { "hls" } else { "p" }, &raw.url, raw.profile),
-        kind: if raw.hls { "hls" } else { "progressive" }.into(),
+    let mut url = remote_url(if raw.hls { "hls" } else { "p" }, &raw.url, raw.profile);
+    if let Some(id) = store_headers(&raw.headers) {
+        url.push_str(&format!("&h={id}"));
     }
+    StreamInfo { url, kind: if raw.hls { "hls" } else { "progressive" }.into() }
 }
 
 pub fn local_file(path: &str) -> StreamInfo {
@@ -105,7 +138,8 @@ async fn remote(Query(q): Query<RemoteQ>, headers: HeaderMap) -> Response<Body> 
     if !(q.u.starts_with("https://") || q.u.starts_with("http://")) {
         return status(StatusCode::BAD_REQUEST, "bad url");
     }
-    let mut rb = apply_profile(client().get(&q.u), q.c.as_deref().unwrap_or("browser"));
+    let extra = q.h.as_deref().map(headers_for).unwrap_or_default();
+    let mut rb = apply_headers(client().get(&q.u), q.c.as_deref().unwrap_or("browser"), &extra);
     if let Some(range) = headers.get(header::RANGE).and_then(|r| r.to_str().ok()) {
         rb = rb.header("Range", range);
     }

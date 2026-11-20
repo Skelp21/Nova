@@ -3,7 +3,7 @@ import { normKey } from "./format";
 import type { ImportedPlaylist, Source, Track } from "./types";
 
 /** Picks the search result that best matches title/artist/duration. */
-function best(item: ImportedPlaylist["items"][number], found: Track[]): Track | null {
+export function best(item: ImportedPlaylist["items"][number], found: Track[]): Track | null {
   const want = normKey(item.artist, item.title);
   const [wa, wt] = want.split("|");
   let top: Track | null = null;

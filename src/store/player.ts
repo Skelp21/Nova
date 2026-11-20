@@ -2,7 +2,8 @@ import { create } from "zustand";
 import { api, errText } from "../lib/api";
 import { engine } from "../lib/audio";
 import { shuffleArray } from "../lib/format";
-import type { Track } from "../lib/types";
+import { sourceName, type Source, type Track } from "../lib/types";
+import { best } from "../lib/importer";
 import { useLibrary } from "./library";
 import { useSettings } from "./settings";
 import { toast } from "./ui";
@@ -44,6 +45,56 @@ interface PlayerState {
 let loadToken = 0;
 let failStreak = 0;
 let extendingWave = false;
+/** Tracks we already tried to replace with another service's copy. */
+const triedAlt = new Set<string>();
+let handlingError = false;
+
+/**
+ * When a track can't be played (blocked stream, removed upload…), look for the
+ * same song in another enabled service and play that copy instead of skipping.
+ */
+async function playAlternative(track: Track): Promise<boolean> {
+  if (triedAlt.has(track.id)) return false;
+  triedAlt.add(track.id);
+  const enabled = useSettings.getState().enabledSources;
+  const order: Source[] = ["soundcloud", "youtube", "yandex", "vk"];
+  for (const src of order.filter((s) => s !== track.source && enabled[s])) {
+    try {
+      const found = await api.search(src, `${track.artist} ${track.title}`, 6);
+      const alt = best({ title: track.title, artist: track.artist, duration: track.duration }, found);
+      if (!alt) continue;
+      const st = usePlayer.getState();
+      if (st.queue[st.index]?.id !== track.id) return true; // user moved on
+      const queue = st.queue.slice();
+      queue[st.index] = alt;
+      triedAlt.add(alt.id);
+      usePlayer.setState({ queue });
+      toast(`«${track.title}» играет из ${sourceName(src)}`);
+      loadCurrent(true);
+      return true;
+    } catch {
+      /* this service is unavailable (not signed in etc.) — try the next */
+    }
+  }
+  return false;
+}
+
+/** Shared failure path: try another service, otherwise report and skip. */
+async function onTrackFailed(track: Track, reason: string) {
+  if (handlingError) return;
+  handlingError = true;
+  try {
+    usePlayer.setState({ loading: true, playing: false });
+    if (await playAlternative(track)) return;
+    usePlayer.setState({ loading: false });
+    toast(`«${track.title}» не играет: ${reason}`, "error");
+    failStreak++;
+    if (failStreak < 4) usePlayer.getState().next(false);
+    else failStreak = 0;
+  } finally {
+    handlingError = false;
+  }
+}
 
 export const usePlayer = create<PlayerState>((set, get) => ({
   queue: [],
@@ -253,11 +304,14 @@ async function loadCurrent(autoplay: boolean, startAt = 0) {
     failStreak = 0;
   } catch (e) {
     if (token !== loadToken) return;
-    usePlayer.setState({ loading: false, playing: false });
-    toast(`«${track.title}»: ${errText(e)}`, "error");
-    failStreak++;
-    if (failStreak < 4) usePlayer.getState().next(false);
-    else failStreak = 0;
+    // NotAllowedError = autoplay blocked: just wait for the user to press play.
+    if (e instanceof DOMException && e.name === "NotAllowedError") {
+      usePlayer.setState({ loading: false, playing: false });
+      return;
+    }
+    // The media element's own "error" event handles load failures.
+    if (e instanceof DOMException && (e.name === "NotSupportedError" || e.name === "AbortError")) return;
+    await onTrackFailed(track, errText(e));
   }
   maybeExtendWave();
 }
@@ -296,12 +350,8 @@ export function bindEngine() {
   el.addEventListener("canplay", () => usePlayer.setState({ loading: false }));
   el.addEventListener("ended", () => usePlayer.getState().next(true));
   el.addEventListener("error", () => {
-    const st = usePlayer.getState();
-    const t = st.current();
+    const t = usePlayer.getState().current();
     if (!t || !el.src) return;
-    usePlayer.setState({ loading: false, playing: false });
-    toast(`Не удалось воспроизвести «${t.title}»`, "error");
-    failStreak++;
-    if (failStreak < 4) st.next(false);
+    onTrackFailed(t, "поток не загрузился");
   });
 }

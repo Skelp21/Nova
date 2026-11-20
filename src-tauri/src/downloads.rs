@@ -2,7 +2,7 @@
 //! HLS (AES-128 encrypted segments, MPEG-TS demux to a plain mp3/aac file).
 use crate::http::{client, err};
 use crate::model::{RawStream, Track};
-use crate::proxy::apply_profile;
+use crate::proxy::{apply_headers, apply_profile};
 use aes::cipher::{block_padding::Pkcs7, BlockDecryptMut, KeyIvInit};
 use futures_util::StreamExt;
 use serde::Serialize;
@@ -55,7 +55,7 @@ pub async fn download(app: &AppHandle, track: &Track, raw: RawStream, dir: &Path
 }
 
 async fn download_progressive(app: &AppHandle, track: &Track, raw: &RawStream) -> Result<Vec<u8>, String> {
-    let resp = apply_profile(client().get(&raw.url), raw.profile)
+    let resp = apply_headers(client().get(&raw.url), raw.profile, &raw.headers)
         .send()
         .await
         .map_err(err)?

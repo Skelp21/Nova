@@ -150,7 +150,7 @@ pub async fn stream(track_id: &str) -> Result<RawStream, String> {
     let mut h = Md5::new();
     h.update(format!("{SIGN_SALT}{}{s}", path.trim_start_matches('/')));
     let sign = format!("{:x}", h.finalize());
-    Ok(RawStream { url: format!("https://{host}/get-mp3/{sign}/{ts}{path}"), hls: false, profile: "browser", ext: "mp3" })
+    Ok(RawStream { url: format!("https://{host}/get-mp3/{sign}/{ts}{path}"), hls: false, profile: "browser", ext: "mp3", headers: vec![] })
 }
 
 /// Token comes back in the fragment of the redirect page.

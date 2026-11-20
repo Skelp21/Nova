@@ -98,7 +98,7 @@ pub async fn stream(source_id: &str) -> Result<RawStream, String> {
         .and_then(|u| u.as_str())
         .filter(|u| !u.is_empty())
         .ok_or("VK: трек недоступен")?;
-    Ok(RawStream { url: url.to_string(), hls: url.contains(".m3u8"), profile: "vk", ext: "mp3" })
+    Ok(RawStream { url: url.to_string(), hls: url.contains(".m3u8"), profile: "vk", ext: "mp3", headers: vec![] })
 }
 
 /// Extracts the token from the OAuth redirect (`blank.html#access_token=...`).

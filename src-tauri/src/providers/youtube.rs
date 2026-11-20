@@ -198,16 +198,12 @@ pub async fn radio(video_id: &str) -> Result<Vec<Track>, String> {
         .collect())
 }
 
-/// Audio stream: InnerTube clients first, then yt-dlp on desktop
-/// (it keeps up with YouTube's anti-bot changes).
+/// Audio stream. On desktop yt-dlp goes first: it keeps up with YouTube's
+/// anti-bot changes. InnerTube clients are the fallback (and the only way on
+/// phones). Every URL is test-fetched before it is handed to the player,
+/// because YouTube sometimes returns links that then answer 403.
 pub async fn stream(video_id: &str) -> Result<RawStream, String> {
     let mut errors = Vec::new();
-    for c in CLIENTS {
-        match stream_innertube(video_id, c).await {
-            Ok(s) => return Ok(s),
-            Err(e) => errors.push(e),
-        }
-    }
     #[cfg(desktop)]
     {
         match stream_ytdlp(video_id).await {
@@ -215,7 +211,25 @@ pub async fn stream(video_id: &str) -> Result<RawStream, String> {
             Err(e) => errors.push(format!("yt-dlp: {e}")),
         }
     }
-    Err(format!("YouTube: {}", errors.join("; ")))
+    for c in CLIENTS {
+        match stream_innertube(video_id, c).await {
+            Ok(s) => return Ok(s),
+            Err(e) => errors.push(e),
+        }
+    }
+    Err(format!("YouTube не отдал поток ({})", errors.join("; ")))
+}
+
+/// Fetches the first bytes of a stream to make sure it really plays.
+async fn playable(url: &str, headers: &[(String, String)], ua: &str) -> bool {
+    let mut rb = client().get(url).header("Range", "bytes=0-1023").header("User-Agent", ua);
+    for (k, v) in headers.iter().filter(|(k, _)| !k.eq_ignore_ascii_case("user-agent")) {
+        rb = rb.header(k.as_str(), v.as_str());
+    }
+    match rb.timeout(std::time::Duration::from_secs(8)).send().await {
+        Ok(r) => r.status().is_success(),
+        Err(_) => false,
+    }
 }
 
 async fn stream_innertube(video_id: &str, c: &Client) -> Result<RawStream, String> {
@@ -258,11 +272,16 @@ async fn stream_innertube(video_id: &str, c: &Client) -> Result<RawStream, Strin
         .max_by_key(|f| f.get("bitrate").and_then(|b| b.as_u64()).unwrap_or(0))
         .ok_or_else(|| format!("{}: нет аудиопотока", c.name))?;
     let mime = best.get("mimeType").and_then(|m| m.as_str()).unwrap_or("");
+    let url = best["url"].as_str().unwrap_or_default().to_string();
+    if !playable(&url, &[], c.ua).await {
+        return Err(format!("{}: ссылка заблокирована", c.name));
+    }
     Ok(RawStream {
-        url: best["url"].as_str().unwrap_or_default().to_string(),
+        url,
         hls: false,
         profile: c.profile,
         ext: if mime.contains("mp4") { "m4a" } else { "webm" },
+        headers: vec![],
     })
 }
 
@@ -286,6 +305,14 @@ async fn ytdlp_path() -> Result<std::path::PathBuf, String> {
     let tools = TOOLS_DIR.get().cloned().ok_or("нет папки инструментов")?;
     let p = tools.join(name);
     if p.exists() {
+        let old = std::fs::metadata(&p)
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|t| t.elapsed().ok())
+            .map_or(false, |age| age > std::time::Duration::from_secs(3 * 24 * 3600));
+        if old {
+            let _ = update_ytdlp().await; // keep the old one if the update fails
+        }
         return Ok(p);
     }
     // In PATH?
@@ -301,6 +328,18 @@ async fn ytdlp_path() -> Result<std::path::PathBuf, String> {
     if !cfg!(windows) {
         return Err("yt-dlp не найден".into());
     }
+    update_ytdlp().await?;
+    Ok(p)
+}
+
+/// Downloads the latest official yt-dlp.exe into the tools folder.
+#[cfg(desktop)]
+async fn update_ytdlp() -> Result<(), String> {
+    if !cfg!(windows) {
+        return Err("обновление yt-dlp только для Windows".into());
+    }
+    let tools = TOOLS_DIR.get().cloned().ok_or("нет папки инструментов")?;
+    let p = tools.join("yt-dlp.exe");
     tokio::fs::create_dir_all(&tools).await.map_err(err)?;
     let bytes = client()
         .get(YTDLP_URL)
@@ -315,11 +354,26 @@ async fn ytdlp_path() -> Result<std::path::PathBuf, String> {
     let tmp = tools.join("yt-dlp.download");
     tokio::fs::write(&tmp, &bytes).await.map_err(err)?;
     tokio::fs::rename(&tmp, &p).await.map_err(err)?;
-    Ok(p)
+    Ok(())
 }
 
 #[cfg(desktop)]
 async fn stream_ytdlp(video_id: &str) -> Result<RawStream, String> {
+    match ytdlp_once(video_id).await {
+        Ok(s) => Ok(s),
+        Err(first) => {
+            // YouTube changed something: fetch the newest yt-dlp and retry once.
+            if update_ytdlp().await.is_ok() {
+                ytdlp_once(video_id).await
+            } else {
+                Err(first)
+            }
+        }
+    }
+}
+
+#[cfg(desktop)]
+async fn ytdlp_once(video_id: &str) -> Result<RawStream, String> {
     let exe = ytdlp_path().await?;
     let mut cmd = tokio::process::Command::new(&exe);
     cmd.args([
@@ -346,5 +400,19 @@ async fn stream_ytdlp(video_id: &str) -> Result<RawStream, String> {
         Some("m4a") | Some("mp4") => "m4a",
         _ => "webm",
     };
-    Ok(RawStream { url: url.to_string(), hls: false, profile: "browser", ext })
+    // The URL only works with the headers yt-dlp used to get it.
+    let headers: Vec<(String, String)> = info
+        .get("http_headers")
+        .and_then(|h| h.as_object())
+        .map(|m| m.iter().filter_map(|(k, v)| Some((k.clone(), v.as_str()?.to_string()))).collect())
+        .unwrap_or_default();
+    let ua = headers
+        .iter()
+        .find(|(k, _)| k.eq_ignore_ascii_case("user-agent"))
+        .map(|(_, v)| v.clone())
+        .unwrap_or_else(|| crate::http::BROWSER_UA.to_string());
+    if !playable(url, &headers, &ua).await {
+        return Err("ссылка от yt-dlp не открывается".into());
+    }
+    Ok(RawStream { url: url.to_string(), hls: false, profile: "browser", ext, headers })
 }
