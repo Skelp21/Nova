@@ -32,7 +32,6 @@ jobs:
           name: Yarvi-Windows
           path: |
             src-tauri/target/release/bundle/nsis/*.exe
-            src-tauri/target/release/bundle/msi/*.msi
             src-tauri/target/release/yarvi.exe
 
   android:

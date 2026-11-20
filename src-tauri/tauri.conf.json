@@ -30,7 +30,9 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["msi", "nsis"],
+    "targets": [
+      "nsis"
+    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -38,7 +40,20 @@
       "icons/icon.ico"
     ],
     "windows": {
-      "webviewInstallMode": { "type": "embedBootstrapper" }
-    }
+      "webviewInstallMode": {
+        "type": "embedBootstrapper"
+      },
+      "nsis": {
+        "installerHooks": "./windows/hooks.nsi",
+        "installMode": "currentUser",
+        "languages": [
+          "Russian",
+          "English"
+        ],
+        "displayLanguageSelector": false
+      }
+    },
+    "publisher": "Skelp",
+    "shortDescription": "Yarvi — музыка из YouTube, SoundCloud, ВК и Яндекса в одном плеере"
   }
 }
